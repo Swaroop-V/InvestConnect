@@ -75,4 +75,4 @@ To run this project locally on your machine:
 This project was developed as an internship assignment to showcase full-stack development capabilities using serverless technologies. It serves as a functional MVP (Minimum Viable Product).
 
 ---
-*Developed by [Your Name]*
+*Developed by Swaroop Vaidya*
