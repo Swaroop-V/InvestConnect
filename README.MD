@@ -5,6 +5,13 @@
 
 InvestConnect is a Single Page Application (SPA) designed to bridge the gap between Entrepreneurs, Investors, Bankers, and Business Advisors. This project demonstrates proficiency in modern frontend development, component-based architecture, and cloud-based backend integration.
 
+## 📚 Documentation & Design
+
+*   **[Low-Level Design (LLD) & Architecture](./LLD.md):** Detailed breakdown of system architecture, database schema (Firestore), and component logic.
+*   **[Wireframes & System Architecture](./WIREFRAMES.md):** Visual layout schematics and high-level system diagrams.
+*   **[Optimization Strategies & Test Cases](./OPTIMIZATION_AND_TESTING.md):** *NEW!* Detailed breakdown of code/architecture optimizations (Caching, MVC) and system test plans.
+*   **[Live Demo](#):** (Add your deployment link here)
+
 ## 🛠 Technologies Used
 
 *   **Frontend:** HTML5, CSS3, JavaScript (ES6 Modules)
@@ -62,6 +69,7 @@ This application allows for a highly performant user experience by loading a sin
 2.  **Data Layer (`services.js`):**
     *   Abstracts all Firebase logic (Auth, Firestore) away from the UI.
     *   Provides asynchronous methods (`getIdeas`, `login`, `postQuery`) used by the controller.
+    *   **Optimization:** Implements In-Memory caching to minimize database reads and improve responsiveness.
 
 3.  **Presentation Layer (`views.js`):**
     *   Contains pure functions that return HTML template strings.

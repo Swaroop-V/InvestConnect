@@ -13,13 +13,7 @@ log.info("🚀 [System] Services module loaded.");
 
 /**
  * --- FIREBASE CONFIGURATION ---
- * 
- * NOTE: The API Key below is a placeholder. 
- * If you see "auth/api-key-not-valid", the app will prompt you to enter your own key.
- * You can find it in Firebase Console -> Project Settings -> General.
  */
-
-// Check if user has provided a custom key via the UI prompt
 const storedKey = localStorage.getItem('investconnect_api_key');
 
 const firebaseConfig = {
@@ -42,16 +36,46 @@ try {
     log.info("✅ [Firebase] Initialized successfully.");
 } catch (e) {
     log.error("❌ [Firebase] Initialization Error:", e);
-    // Continue execution so we can catch specific errors later (like invalid key)
 }
 
-export const services = {
-    // Helper to check status
-    isLive() {
-        return true;
-    },
+/**
+ * --- OPTIMIZATION: IN-MEMORY CACHE ---
+ * Reduces Firestore reads and improves load times for frequent navigations.
+ */
+const CACHE_TTL = 5 * 60 * 1000; // 5 Minutes
+const _cache = {
+    ideas: { data: null, timestamp: 0 },
+    proposals: { data: null, timestamp: 0 },
+    loans: { data: null, timestamp: 0 },
+    advisories: { data: null, timestamp: 0 },
+    queries: { data: null, timestamp: 0 }
+};
 
-    // NEW: Method to update API Key from UI
+const getCached = (key) => {
+    const item = _cache[key];
+    const now = Date.now();
+    if (item.data && (now - item.timestamp < CACHE_TTL)) {
+        log.info(`⚡ [Cache] Serving '${key}' from memory.`);
+        return item.data;
+    }
+    return null;
+};
+
+const setCache = (key, data) => {
+    _cache[key] = {
+        data: data,
+        timestamp: Date.now()
+    };
+};
+
+// Clear specific cache when a new item is posted
+const invalidateCache = (key) => {
+    if (_cache[key]) _cache[key].timestamp = 0;
+};
+
+export const services = {
+    isLive() { return true; },
+
     updateApiKey(newKey) {
         if (!newKey) return;
         log.warn("🔑 [Auth] Updating API Key manually.");
@@ -59,7 +83,6 @@ export const services = {
         window.location.reload();
     },
 
-    // NEW: Method to clear API Key
     resetApiKey() {
         log.warn("🔑 [Auth] Resetting API Key.");
         localStorage.removeItem('investconnect_api_key');
@@ -71,14 +94,11 @@ export const services = {
      */
     async signup({ name, email, password, role }) {
         log.info(`👤 [Auth] Signup attempt for email: ${email}, role: ${role}`);
-        // 1. Create Authentication User
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         const user = userCredential.user;
         
-        // 2. Update Auth Profile
         await updateProfile(user, { displayName: name });
         
-        // 3. Create User Document in Firestore (To store Role)
         const userData = {
             uid: user.uid,
             name, 
@@ -88,24 +108,19 @@ export const services = {
         };
 
         await setDoc(doc(db, "users", user.uid), userData);
-        
         log.info("✅ [Auth] Signup successful. UID:", user.uid);
         return { id: user.uid, ...userData };
     },
 
     async login(email, password) {
         log.info(`👤 [Auth] Login attempt for email: ${email}`);
-        // 1. Authenticate with Firebase
         const userCredential = await signInWithEmailAndPassword(auth, email, password);
         const user = userCredential.user;
         
-        // Default values
         let role = 'ENTREPRENEUR';
         let name = user.displayName || 'User';
-        let foundProfile = false;
 
         try {
-            // 2. Fetch User Role from Firestore (Try UID match first)
             const docRef = doc(db, "users", user.uid);
             const docSnap = await getDoc(docRef);
             
@@ -113,69 +128,75 @@ export const services = {
                 const data = docSnap.data();
                 role = data.role || role;
                 name = data.name || name;
-                foundProfile = true;
-                log.debug("📄 [Auth] User profile retrieved from Firestore.");
             } else {
-                // 3. Fallback: Try fetching by Email (In case of manual DB entry mismatch)
-                log.warn("⚠️ [Auth] No document with UID found. Searching by email...");
                 const q = query(collection(db, "users"), where("email", "==", email));
                 const querySnapshot = await getDocs(q);
-                
                 if (!querySnapshot.empty) {
                     const data = querySnapshot.docs[0].data();
                     role = data.role || role;
                     name = data.name || name;
-                    foundProfile = true;
-                    log.info(`✅ [Auth] Found profile by email. Role: ${role}`);
-                } else {
-                    log.warn("⚠️ [Auth] User profile not found in Firestore. Defaulting to ENTREPRENEUR.");
                 }
             }
         } catch (err) {
             log.error("❌ [Auth] Error fetching user profile:", err);
-            // If this fails (e.g. permission denied), we still log the user in, 
-            // but they might have the wrong role. 
         }
 
-        log.info("✅ [Auth] Login successful.");
         return { id: user.uid, name, email: user.email, role };
     },
 
     async logout() {
         log.info("👋 [Auth] Logging out...");
         await signOut(auth);
-        log.info("✅ [Auth] Logged out successfully.");
     },
 
     /**
-     * FIRESTORE DATA METHODS
+     * FIRESTORE DATA METHODS (Optimized with Cache)
      */
 
     async getIdeas() {
-        log.info("📥 [DB] Fetching Ideas...");
+        const cached = getCached('ideas');
+        if (cached) return cached;
+
+        log.info("📥 [DB] Fetching Ideas from Firestore...");
         const q = query(collection(db, "ideas"), orderBy("createdAt", "desc"));
         const snapshot = await getDocs(q);
-        log.info(`✅ [DB] Retrieved ${snapshot.size} ideas.`);
-        return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        
+        setCache('ideas', data);
+        return data;
     },
 
     async getIdeasByCategory(category) {
+        // We can optimize this by filtering the already cached full list if available
+        const cachedAll = getCached('ideas');
+        if (cachedAll) {
+            log.info(`⚡ [Cache] Filtering category '${category}' from cached ideas.`);
+            return cachedAll.filter(idea => idea.category === category);
+        }
+
         log.info(`📥 [DB] Fetching Ideas for category: ${category}...`);
         const q = query(collection(db, "ideas"), where("category", "==", category));
         const snapshot = await getDocs(q);
-        log.info(`✅ [DB] Retrieved ${snapshot.size} ideas for ${category}.`);
         return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     },
 
     async getIdeaById(id) {
+        // Try to find in cache first
+        const cachedAll = getCached('ideas');
+        if (cachedAll) {
+            const found = cachedAll.find(i => i.id === id);
+            if (found) {
+                log.info("⚡ [Cache] Found idea details in memory.");
+                return found;
+            }
+        }
+
         log.info(`📥 [DB] Fetching Idea ID: ${id}...`);
         const docRef = doc(db, "ideas", id);
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
-            log.info("✅ [DB] Idea retrieved.");
             return { id: docSnap.id, ...docSnap.data() };
         } else {
-            log.warn("⚠️ [DB] Idea not found.");
             return null;
         }
     },
@@ -184,82 +205,94 @@ export const services = {
         log.info("📤 [DB] Posting new Idea...", idea.title);
         const data = { ...idea, createdAt: new Date().toISOString() };
         const docRef = await addDoc(collection(db, "ideas"), data);
-        log.info("✅ [DB] Idea posted. ID:", docRef.id);
+        invalidateCache('ideas'); // Clear cache to force refetch next time
         return { id: docRef.id, ...data };
     },
 
     async getProposals() {
+        const cached = getCached('proposals');
+        if (cached) return cached;
+
         log.info("📥 [DB] Fetching Proposals...");
         const q = query(collection(db, "proposals"), orderBy("createdAt", "desc"));
         const snapshot = await getDocs(q);
-        log.info(`✅ [DB] Retrieved ${snapshot.size} proposals.`);
-        return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setCache('proposals', data);
+        return data;
     },
 
     async postProposal(proposal) {
         log.info("📤 [DB] Posting new Proposal...", proposal.title);
         const data = { ...proposal, createdAt: new Date().toISOString() };
         await addDoc(collection(db, "proposals"), data);
-        log.info("✅ [DB] Proposal posted.");
+        invalidateCache('proposals');
         return data;
     },
 
     async getLoans() {
+        const cached = getCached('loans');
+        if (cached) return cached;
+
         log.info("📥 [DB] Fetching Loan Schemes...");
         const q = query(collection(db, "loans"), orderBy("createdAt", "desc"));
         const snapshot = await getDocs(q);
-        log.info(`✅ [DB] Retrieved ${snapshot.size} loans.`);
-        return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setCache('loans', data);
+        return data;
     },
 
     async postLoan(loan) {
-        log.info("📤 [DB] Posting new Loan Scheme...", loan.title);
         const data = { ...loan, createdAt: new Date().toISOString() };
         await addDoc(collection(db, "loans"), data);
-        log.info("✅ [DB] Loan Scheme posted.");
+        invalidateCache('loans');
         return data;
     },
 
     async getAdvisories() {
+        const cached = getCached('advisories');
+        if (cached) return cached;
+
         log.info("📥 [DB] Fetching Advisory Posts...");
         const q = query(collection(db, "advisories"), orderBy("createdAt", "desc"));
         const snapshot = await getDocs(q);
-        log.info(`✅ [DB] Retrieved ${snapshot.size} advisory posts.`);
-        return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setCache('advisories', data);
+        return data;
     },
 
     async postAdvisory(post) {
-        log.info("📤 [DB] Posting new Advisory Article...", post.title);
         const data = { ...post, createdAt: new Date().toISOString() };
         await addDoc(collection(db, "advisories"), data);
-        log.info("✅ [DB] Advisory Article posted.");
+        invalidateCache('advisories');
         return data;
     },
 
     async getQueries() {
+        const cached = getCached('queries');
+        if (cached) return cached;
+
         log.info("📥 [DB] Fetching Queries...");
         const q = query(collection(db, "queries"), orderBy("createdAt", "desc"));
         const snapshot = await getDocs(q);
-        log.info(`✅ [DB] Retrieved ${snapshot.size} queries.`);
-        return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setCache('queries', data);
+        return data;
     },
 
     async postQuery(queryData) {
-        log.info("📤 [DB] Posting new Query...", queryData.title);
         const data = { ...queryData, solutions: [], createdAt: new Date().toISOString() };
         await addDoc(collection(db, "queries"), data);
-        log.info("✅ [DB] Query posted.");
+        invalidateCache('queries');
         return data;
     },
 
     async postSolution(queryId, solutionData) {
-        log.info(`📤 [DB] Posting solution for Query ID: ${queryId}`);
         const solution = { ...solutionData, createdAt: new Date().toISOString() };
         const qRef = doc(db, "queries", queryId);
         await updateDoc(qRef, {
             solutions: arrayUnion(solution)
         });
-        log.info("✅ [DB] Solution added.");
+        invalidateCache('queries');
         return solution;
     }
 };
