@@ -3,7 +3,7 @@
 
 **A Comprehensive Financial Networking Platform**
 
-InvestConnect is a Single Page Application (SPA) designed to bridge the gap between Entrepreneurs, Investors, Bankers, and Business Advisors. This project was built to demonstrate proficiency in modern frontend development, component-based architecture, and cloud-based backend integration.
+InvestConnect is a Single Page Application (SPA) designed to bridge the gap between Entrepreneurs, Investors, Bankers, and Business Advisors. This project demonstrates proficiency in modern frontend development, component-based architecture, and cloud-based backend integration.
 
 ## 🛠 Technologies Used
 
@@ -13,6 +13,25 @@ InvestConnect is a Single Page Application (SPA) designed to bridge the gap betw
 *   **Architecture:** Component-based SPA without frameworks (Vanilla JS)
 *   **Version Control:** Git & GitHub
 
+## 🌐 System Design & Deployment Justification
+
+### Architecture Choice: Cloud-Based Serverless (BaaS)
+This application utilizes a **Cloud Platform** architecture rather than Edge or Local hosting. Specifically, it leverages a "Backend-as-a-Service" (BaaS) model using Google Firebase.
+
+### Justification
+1.  **Centralized Data Consistency (vs. Local/Edge):**
+    *   *Requirement:* Financial data, investment proposals, and business queries must be synchronized in real-time across all users (Investors, Entrepreneurs, etc.).
+    *   *Reasoning:* Hosting on a local machine or edge device would create data silos. A centralized Cloud Firestore database ensures that when an Entrepreneur posts an idea, an Investor sees it instantly.
+
+2.  **Scalability & Availability:**
+    *   *Reasoning:* The Cloud architecture allows the application to handle fluctuating traffic without manual server scaling. Google's CDN ensures high availability and low latency for static assets (HTML/JS).
+
+3.  **Security:**
+    *   *Reasoning:* Firebase Authentication handles identity management securely in the cloud, removing the risk of managing encryption and sessions on a self-hosted server.
+
+### Deployment Strategy
+The application is designed to be hosted on **Static Web Hosts** (e.g., Firebase Hosting, Vercel, or Netlify), while the logic runs on the client-side browser communicating directly with the Cloud Database.
+
 ## 🚀 Key Features
 
 *   **Role-Based Access Control (RBAC):** Custom dashboards for 5 distinct user roles (Entrepreneur, Investor, Banker, Advisor, General User).
@@ -20,7 +39,6 @@ InvestConnect is a Single Page Application (SPA) designed to bridge the gap betw
 *   **Secure Authentication:** Integrated Firebase Auth for secure signup and login flows.
 *   **Dynamic Routing:** Custom hash-based router implemented from scratch in Vanilla JS.
 *   **Responsive UI:** Fully responsive design ensuring usability across mobile and desktop devices.
-*   **Interactive Elements:** Dynamic toast notifications, modal-like forms, and live status indicators.
 
 ## 🔄 System Workflow
 

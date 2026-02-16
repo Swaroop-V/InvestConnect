@@ -1,6 +1,3 @@
-
-
-
 // Helper to format currency
 const formatMoney = (amount) => '₹' + Number(amount).toLocaleString('en-IN');
 
